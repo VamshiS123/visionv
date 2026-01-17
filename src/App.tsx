@@ -138,8 +138,11 @@ function App() {
       alert('Please set VITE_OVERSHOOT_API_KEY in your .env file');
       return;
     }
-    await start();
+    // Show camera view first to allow it to access camera before SDK
     setShowCamera(true);
+    // Small delay to let camera preview initialize
+    await new Promise(resolve => setTimeout(resolve, 300));
+    await start();
   };
 
   const handleStop = async () => {

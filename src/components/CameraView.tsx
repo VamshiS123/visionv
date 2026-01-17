@@ -8,7 +8,40 @@ export function CameraView({ isActive }: CameraViewProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
+  const [hasTriedAccess, setHasTriedAccess] = useState(false);
+
+  // Try to access camera immediately when component mounts (before SDK starts)
+  useEffect(() => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || hasTriedAccess) {
+      return;
+    }
+
+    // Try to get camera access immediately when component mounts
+    console.log('Attempting to access camera for preview...');
+    navigator.mediaDevices
+      .getUserMedia({ 
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } 
+      })
+      .then((stream) => {
+        console.log('Camera preview accessed successfully (before SDK)');
+        streamRef.current = stream;
+        
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          setError(null);
+        }
+        setHasTriedAccess(true);
+      })
+      .catch((err) => {
+        console.log('Initial camera access failed, will retry:', err.name);
+        setHasTriedAccess(true);
+        // Don't set error yet - will retry when isActive becomes true
+      });
+  }, [hasTriedAccess]);
 
   useEffect(() => {
     if (!isActive) {
@@ -21,6 +54,12 @@ export function CameraView({ isActive }: CameraViewProps) {
         videoRef.current.srcObject = null;
       }
       setError(null);
+      setHasTriedAccess(false); // Reset to allow retry on next activation
+      return;
+    }
+
+    // If we already have a stream, don't try again
+    if (streamRef.current) {
       return;
     }
 
@@ -32,9 +71,13 @@ export function CameraView({ isActive }: CameraViewProps) {
     let isMounted = true;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const startCamera = () => {
-      // Try to access camera with a delay to let SDK initialize first
+    const startCamera = (attempt: number = 0) => {
+      // Try immediately first, then retry with delays
+      const delay = attempt === 0 ? 0 : Math.min(500 * attempt, 2000);
+      
       const timer = setTimeout(() => {
+        if (!isMounted) return;
+        
         navigator.mediaDevices
           .getUserMedia({ 
             video: { 
@@ -49,29 +92,30 @@ export function CameraView({ isActive }: CameraViewProps) {
               return;
             }
             
+            console.log('Camera preview accessed successfully');
             streamRef.current = stream;
             
             if (videoRef.current) {
               videoRef.current.srcObject = stream;
               setError(null);
-              setRetryCount(0);
             }
           })
           .catch((err) => {
             if (!isMounted) return;
             
-            // If camera is busy (likely SDK using it), try again after a delay
-            if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-              if (retryCount < 3) {
-                console.log(`Camera busy, retrying... (${retryCount + 1}/3)`);
-                setRetryCount(prev => prev + 1);
+            console.log(`Camera access attempt ${attempt + 1} failed:`, err.name);
+            
+            // If camera is busy, try again with exponential backoff
+            if (err.name === 'NotReadableError' || err.name === 'TrackStartError' || err.name === 'AbortError') {
+              if (attempt < 5) {
+                console.log(`Camera busy, retrying in ${delay}ms... (${attempt + 1}/5)`);
                 retryTimer = setTimeout(() => {
                   if (isMounted) {
-                    startCamera();
+                    startCamera(attempt + 1);
                   }
-                }, 1000 * (retryCount + 1)); // Exponential backoff
+                }, delay);
               } else {
-                console.warn('Camera preview unavailable - SDK may be using camera');
+                console.warn('Camera preview unavailable after retries - SDK may be using camera exclusively');
                 setError('Camera preview unavailable');
               }
             } else if (err.name === 'NotAllowedError') {
@@ -80,10 +124,19 @@ export function CameraView({ isActive }: CameraViewProps) {
               setError('No camera found');
             } else {
               console.warn('Camera preview error:', err);
-              setError('Camera preview unavailable');
+              // Still retry for unknown errors
+              if (attempt < 3) {
+                retryTimer = setTimeout(() => {
+                  if (isMounted) {
+                    startCamera(attempt + 1);
+                  }
+                }, 1000 * (attempt + 1));
+              } else {
+                setError('Camera preview unavailable');
+              }
             }
           });
-      }, 1000); // Wait 1 second for SDK to initialize
+      }, delay);
 
       return timer;
     };
@@ -104,7 +157,7 @@ export function CameraView({ isActive }: CameraViewProps) {
         videoRef.current.srcObject = null;
       }
     };
-  }, [isActive, retryCount]);
+  }, [isActive]);
 
   if (!isActive) {
     return null;
