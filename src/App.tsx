@@ -34,7 +34,7 @@ function App() {
     pendingCount,
     testSpeech,
   } = useBatchedSpeech({
-    batchInterval: 300, // 0.3 seconds - reduced for faster speech updates
+    batchInterval: 500, // 0.5 seconds - reduced for faster speech updates
     apiKey: MURF_API_KEY,
     voiceId: MURF_VOICE_ID,
     format: 'MP3',
@@ -56,8 +56,8 @@ function App() {
     prompt: DEFAULT_PROMPT,
     cameraFacing: 'environment',
     processing: {
-      clip_length_seconds: 0.5,  // Reduced for faster processing
-      delay_seconds: 0.3,         // Reduced for faster updates
+      clip_length_seconds: 1.0,  // Reduced from 1.5 for faster processing (0.5 was too low for API)
+      delay_seconds: 0.8,         // Reduced from 1.5 for faster updates (minimum likely ~0.8)
       fps: 30,
       sampling_ratio: 0.1,
     },
