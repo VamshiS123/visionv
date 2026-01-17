@@ -20,6 +20,18 @@ export function CameraView({ isActive }: CameraViewProps) {
         })
         .catch((err) => {
           console.error('Error accessing camera:', err);
+          // Provide user-friendly error messages
+          let errorMessage = 'Camera access failed. ';
+          if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            errorMessage += 'Please allow camera access in your browser settings.';
+          } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+            errorMessage += 'No camera found on this device.';
+          } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+            errorMessage += 'Camera is already in use by another application.';
+          } else {
+            errorMessage += `Error: ${err.message || err.name}`;
+          }
+          alert(errorMessage);
         });
     } else {
       // Stop the stream when inactive
