@@ -56,8 +56,8 @@ function App() {
     prompt: DEFAULT_PROMPT,
     cameraFacing: 'environment',
     processing: {
-      clip_length_seconds: 1.0,  // Reduced from 1.5 for faster processing (0.5 was too low for API)
-      delay_seconds: 0.8,         // Reduced from 1.5 for faster updates (minimum likely ~0.8)
+      clip_length_seconds: 1.0,  // Window size for analysis
+      delay_seconds: 1.0,         // Frequency of results (using safe default)
       fps: 30,
       sampling_ratio: 0.1,
     },

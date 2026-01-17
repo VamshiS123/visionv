@@ -108,14 +108,41 @@ export function useOvershoot({
 
       visionRef.current = vision;
       console.log('Starting vision...');
-      await vision.start();
-      console.log('Vision started successfully');
-      setIsActive(true);
-      setIsLoading(false);
+      console.log('Vision config:', JSON.stringify(visionConfig, null, 2));
+      
+      // Add timeout to detect if start() hangs
+      const startPromise = vision.start();
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Vision start timed out after 10 seconds'));
+        }, 10000);
+      });
+      
+      try {
+        await Promise.race([startPromise, timeoutPromise]);
+        console.log('Vision started successfully');
+        setIsActive(true);
+        setIsLoading(false);
+      } catch (startError) {
+        console.error('Error in vision.start():', startError);
+        // Clean up vision instance if start failed
+        if (visionRef.current === vision) {
+          visionRef.current = null;
+        }
+        throw startError; // Re-throw to be caught by outer catch
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to start camera';
-      console.error('Error starting vision:', err);
-      setError(errorMessage);
+      const errorDetails = err instanceof Error ? {
+        name: err.name,
+        message: err.message,
+        stack: err.stack
+      } : String(err);
+      
+      console.error('Error starting vision:', errorDetails);
+      console.error('Full error object:', err);
+      
+      setError(`${errorMessage}. Check console for details.`);
       setIsLoading(false);
       setIsActive(false);
       visionRef.current = null;
