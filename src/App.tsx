@@ -5,6 +5,8 @@ import { CameraView } from './components/CameraView';
 import { DescriptionDisplay } from './components/DescriptionDisplay';
 import { NarrationControls } from './components/NarrationControls';
 import { StatusDisplay } from './components/StatusDisplay';
+import { QASection } from './components/QASection';
+import { storeObservation } from './services/observationStorage';
 import './App.css';
 
 const API_URL = import.meta.env.VITE_OVERSHOOT_API_URL || 'https://cluster1.overshoot.ai/api/v0.2';
@@ -77,44 +79,56 @@ function App() {
       const currentVoiceEnabled = voiceEnabledRef.current;
       const currentIsActive = isActiveRef.current;
       console.log('Overshoot onResult called:', { voiceEnabled: currentVoiceEnabled, isActive: currentIsActive, result });
-      if (!currentVoiceEnabled || !currentIsActive) {
-        console.log('Skipping observation - voice not enabled or not active');
-        return;
-      }
+
+      let observation: { narration: string; priority?: string } | null = null;
 
       try {
         // Try to parse as JSON (structured output)
-        const observation = JSON.parse(result.result);
-        console.log('Parsed observation:', observation);
+        const parsed = JSON.parse(result.result);
+        console.log('Parsed observation:', parsed);
         
         // Skip if unchanged
-        if (observation.narration === 'unchanged' || 
-            observation.narration?.toLowerCase() === 'unchanged') {
+        if (parsed.narration === 'unchanged' || 
+            parsed.narration?.toLowerCase() === 'unchanged') {
           console.log('Skipping unchanged observation');
           return;
         }
 
-        if (observation.narration && observation.priority) {
-          console.log('Adding structured observation to speech manager:', observation);
-          addObservation({
-            narration: observation.narration,
-            priority: observation.priority,
-          });
+        if (parsed.narration && parsed.priority) {
+          observation = {
+            narration: parsed.narration,
+            priority: parsed.priority,
+          };
         } else {
           // Fallback: if not structured, treat as medium priority
-          console.log('Received unstructured result, treating as medium priority');
-          addObservation({
+          observation = {
             narration: result.result,
             priority: 'medium',
-          });
+          };
         }
       } catch (e) {
         // If parsing fails, treat as plain text with medium priority
         console.log('Parse error, treating as plain text:', e, result.result);
         if (result.result && result.result.toLowerCase() !== 'unchanged') {
-          addObservation({
+          observation = {
             narration: result.result,
             priority: 'medium',
+          };
+        }
+      }
+
+      // Store observation in Supabase (fire and forget - non-blocking)
+      if (observation) {
+        storeObservation(observation).catch((err) => {
+          console.error('Failed to store observation:', err);
+        });
+
+        // Only add to speech manager if voice is enabled and active
+        if (currentVoiceEnabled && currentIsActive) {
+          console.log('Adding observation to speech manager:', observation);
+          addObservation({
+            narration: observation.narration,
+            priority: observation.priority || 'medium',
           });
         }
       }
@@ -227,6 +241,8 @@ function App() {
           isActive={isActive} 
           showText={textDisplayEnabled}
         />
+
+        <QASection />
       </main>
     </div>
   );
