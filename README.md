@@ -40,11 +40,32 @@ VITE_OVERSHOOT_API_URL=https://cluster1.overshoot.ai/api/v0.2
 VITE_OVERSHOOT_API_KEY=your-overshoot-api-key-here
 VITE_MURF_API_KEY=your-murf-api-key-here
 VITE_MURF_VOICE_ID=en-US-natalie
+VITE_SUPABASE_URL=your-supabase-project-url
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+VITE_GEMINI_API_KEY=your-gemini-api-key
 ```
 
 Get your API keys:
 - **Overshoot API Key**: Get one at [Overshoot Platform](https://overshoot.ai)
 - **Murf AI API Key**: Get one at [Murf AI](https://murf.ai)
+- **Supabase URL & Key**: Get from [Supabase Dashboard](https://supabase.com) > Settings > API
+- **Gemini API Key**: Get from [Google AI Studio](https://makersuite.google.com/app/apikey)
+
+5. Set up Supabase database:
+   - Go to [Supabase Dashboard](https://supabase.com) and create a new project
+   - In the SQL Editor, run:
+   ```sql
+   CREATE TABLE observations (
+     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     narration TEXT NOT NULL,
+     priority VARCHAR(20),
+     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+   );
+
+   ALTER TABLE observations ENABLE ROW LEVEL SECURITY;
+   CREATE POLICY "Allow all" ON observations FOR ALL USING (true);
+   ```
+   - Copy your project URL and anon key from Settings > API
 
 ### Running the App
 

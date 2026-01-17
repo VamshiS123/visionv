@@ -12,7 +12,11 @@
   "license": "ISC",
   "description": "VisionVoice - Continuous ambient narration with Overshoot SDK",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
+    "@google/generative-ai": "^0.24.1",
     "@overshoot/sdk": "^0.1.0-alpha.2",
+    "@supabase/supabase-js": "^2.90.1",
+    "openai": "^6.16.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
   },
