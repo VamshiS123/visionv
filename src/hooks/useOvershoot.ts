@@ -64,19 +64,49 @@ export function useOvershoot({
       
       const resultCallback = (result: OvershootResult) => {
         try {
-          if (result && result.result) {
-            descriptionRef.current = result.result;
-            setDescription(result.result);
-            setError(null);
+          console.log('Overshoot resultCallback received:', result);
+          console.log('Result type:', typeof result, 'Result keys:', result ? Object.keys(result) : 'null');
+          
+          if (result) {
+            let resultText: string | null = null;
             
+            // Try to get result text from various possible formats
+            if (result.result && typeof result.result === 'string') {
+              resultText = result.result;
+            } else if (typeof result === 'string') {
+              resultText = result;
+            } else if (result.result) {
+              // If result.result exists but isn't a string, stringify it
+              resultText = typeof result.result === 'object' 
+                ? JSON.stringify(result.result) 
+                : String(result.result);
+            } else {
+              // Fallback: stringify the entire result
+              resultText = JSON.stringify(result);
+            }
+            
+            if (resultText) {
+              console.log('Setting description to:', resultText);
+              descriptionRef.current = resultText;
+              setDescription(resultText);
+              setError(null);
+            } else {
+              console.warn('Could not extract text from result:', result);
+            }
+            
+            // Always call onResult callback if provided (for voice narration)
             if (onResult) {
-              onResult(result);
+              try {
+                onResult(result);
+              } catch (callbackErr) {
+                console.error('Error in onResult callback:', callbackErr);
+              }
             }
           } else {
-            console.warn('Result missing or invalid:', result);
+            console.warn('Result is null or undefined');
           }
         } catch (err) {
-          console.error('Error in onResult handler:', err);
+          console.error('Error in resultCallback handler:', err);
           setError(`Error processing result: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
       };
@@ -108,10 +138,27 @@ export function useOvershoot({
 
       visionRef.current = vision;
       console.log('Starting vision...');
+      
+      // Add error handler for vision instance
+      if (vision && typeof vision === 'object') {
+        // Listen for any error events if available
+        try {
+          if ('on' in vision && typeof (vision as any).on === 'function') {
+            (vision as any).on('error', (err: any) => {
+              console.error('Vision instance error:', err);
+              setError(`Vision error: ${err?.message || 'Unknown error'}`);
+            });
+          }
+        } catch (e) {
+          // Ignore if error handling not available
+        }
+      }
+      
       await vision.start();
       console.log('Vision started successfully');
       setIsActive(true);
       setIsLoading(false);
+      setError(null);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to start camera';
       console.error('Error starting vision:', err);

@@ -77,8 +77,10 @@ function App() {
       const currentVoiceEnabled = voiceEnabledRef.current;
       const currentIsActive = isActiveRef.current;
       console.log('Overshoot onResult called:', { voiceEnabled: currentVoiceEnabled, isActive: currentIsActive, result });
+      
+      // Only skip voice narration if voice is disabled, but always allow description to update
       if (!currentVoiceEnabled || !currentIsActive) {
-        console.log('Skipping observation - voice not enabled or not active');
+        console.log('Skipping voice observation - voice not enabled or not active (description will still update)');
         return;
       }
 
@@ -188,7 +190,7 @@ function App() {
           </div>
         )}
 
-        {showCamera && <CameraView isActive={isActive} />}
+        {showCamera && isActive && <CameraView isActive={isActive} />}
 
         {!MURF_API_KEY && (
           <div className="error-message" style={{ marginBottom: '1rem' }}>
