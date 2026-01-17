@@ -14,6 +14,11 @@ interface UseOvershootOptions {
     sampling_ratio?: number;
   };
   model?: string;
+  outputSchema?: {
+    type: string;
+    properties?: Record<string, any>;
+    required?: string[];
+  };
   onResult?: (result: OvershootResult) => void;
 }
 
@@ -24,6 +29,7 @@ export function useOvershoot({
   cameraFacing = 'environment',
   processing,
   model,
+  outputSchema,
   onResult,
 }: UseOvershootOptions): UseOvershootReturn {
   const [isActive, setIsActive] = useState(false);
@@ -68,6 +74,7 @@ export function useOvershoot({
         cameraFacing,
         processing,
         model,
+        outputSchema,
       });
       
       const resultCallback = (result: OvershootResult) => {
@@ -89,7 +96,7 @@ export function useOvershoot({
         }
       };
       
-      const vision = new RealtimeVision({
+      const visionConfig: any = {
         apiUrl,
         apiKey,
         prompt: currentPromptRef.current,
@@ -105,7 +112,14 @@ export function useOvershoot({
         },
         model,
         onResult: resultCallback,
-      });
+      };
+
+      // Add outputSchema if provided
+      if (outputSchema) {
+        visionConfig.outputSchema = outputSchema;
+      }
+      
+      const vision = new RealtimeVision(visionConfig);
 
       visionRef.current = vision;
       console.log('Starting vision...');
@@ -121,7 +135,7 @@ export function useOvershoot({
       setIsActive(false);
       visionRef.current = null;
     }
-  }, [apiUrl, apiKey, cameraFacing, processing, model, onResult, isActive]);
+  }, [apiUrl, apiKey, cameraFacing, processing, model, outputSchema, onResult, isActive]);
 
   const stop = useCallback(async () => {
     if (visionRef.current) {

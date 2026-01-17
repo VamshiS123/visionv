@@ -30,5 +30,10 @@ export interface OvershootConfig {
     sampling_ratio?: number;
   };
   model?: string;
+  outputSchema?: {
+    type: string;
+    properties?: Record<string, any>;
+    required?: string[];
+  };
   onResult: (result: OvershootResult) => void;
 }

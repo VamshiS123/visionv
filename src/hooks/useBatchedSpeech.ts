@@ -29,15 +29,6 @@ export function useBatchedSpeech(config: BatchedSpeechConfig = {}): UseBatchedSp
     };
   }, []);
 
-  // Check speech synthesis availability on mount
-  useEffect(() => {
-    if (!('speechSynthesis' in window)) {
-      console.warn('Speech synthesis not supported in this browser');
-    } else {
-      console.log('Speech synthesis available');
-    }
-  }, []);
-
   const addObservation = useCallback((observation: { narration: string; priority: ObservationPriority }) => {
     if (managerRef.current) {
       managerRef.current.addObservation(observation);

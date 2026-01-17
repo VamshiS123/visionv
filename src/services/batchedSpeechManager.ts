@@ -9,7 +9,6 @@ export class BatchedSpeechManager {
   private isSpeaking: boolean;
   private batchInterval: number;
   private batchTimer: ReturnType<typeof setInterval> | null = null;
-  private criticalQueue: string[];
   private apiKey: string | undefined;
   private voiceId: string;
   private format: string;
@@ -20,21 +19,116 @@ export class BatchedSpeechManager {
   private currentAudioUrlRef: string | null = null;
   private isProcessingRef: boolean = false;
   private speechStartTime: number = 0;
-  private minSpeechDuration: number = 5000; // Minimum 5 seconds before allowing interruption
+  private minSpeechDuration: number = 2000; // Minimum 2 seconds before allowing interruption (reduced from 5)
+  private currentNarrationText: string | null = null; // Track what's currently being spoken
+  private lastSpoken: Map<string, number>; // Track recently spoken narrations: text -> timestamp
+  private dedupeWindowMs: number = 12000; // Don't repeat same thing within 12 seconds
 
   constructor(config: BatchedSpeechConfig = {}) {
     this.pendingObservations = [];
     this.isSpeaking = false;
     this.batchInterval = config.batchInterval ?? DEFAULT_BATCH_INTERVAL;
-    this.criticalQueue = [];
     this.apiKey = config.apiKey;
     this.voiceId = config.voiceId ?? DEFAULT_VOICE_ID;
     this.format = config.format ?? 'MP3';
     this.sampleRate = config.sampleRate ?? 44100;
     this.pitch = config.pitch ?? 0;
     this.rate = config.rate ?? 0;
+    this.lastSpoken = new Map();
     
     this.startBatching();
+    
+    // Clean up old entries periodically
+    setInterval(() => {
+      this.cleanupOldEntries();
+    }, 30000); // Every 30 seconds
+  }
+
+  /**
+   * Check if a narration was recently spoken (within dedupe window)
+   */
+  private wasRecentlySpoken(narration: string): boolean {
+    const key = narration.toLowerCase().trim();
+    const lastTime = this.lastSpoken.get(key);
+    
+    if (lastTime && Date.now() - lastTime < this.dedupeWindowMs) {
+      return true;
+    }
+    
+    // Also check for similar narrations (not exact matches)
+    for (const [spokenText, time] of this.lastSpoken.entries()) {
+      if (Date.now() - time < this.dedupeWindowMs) {
+        if (this.isSimilarNarration(key, spokenText)) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
+
+  /**
+   * Check if two narrations are similar (likely the same observation)
+   */
+  private isSimilarNarration(a: string, b: string): boolean {
+    // If first 25 characters match, likely the same
+    if (a.slice(0, 25) === b.slice(0, 25)) {
+      return true;
+    }
+    
+    // Extract key words (longer words are more meaningful)
+    const wordsA = a.split(/\s+/).filter(w => w.length > 3).map(w => w.toLowerCase());
+    const wordsB = b.split(/\s+/).filter(w => w.length > 3).map(w => w.toLowerCase());
+    
+    if (wordsA.length === 0 || wordsB.length === 0) {
+      return false;
+    }
+    
+    // If more than 50% of key words match, consider it similar
+    const commonWords = wordsA.filter(w => wordsB.includes(w));
+    const overlapRatio = commonWords.length / Math.min(wordsA.length, wordsB.length);
+    
+    return overlapRatio > 0.5;
+  }
+
+  /**
+   * Check if a narration mentions a new/different object compared to current narration
+   */
+  private isNewObject(narration: string): boolean {
+    if (!this.currentNarrationText) {
+      return true; // No current narration, so this is new
+    }
+
+    const current = this.currentNarrationText.toLowerCase();
+    const newNarration = narration.toLowerCase();
+
+    // If they're very similar (first 30 chars match), it's not a new object
+    if (current.slice(0, 30) === newNarration.slice(0, 30)) {
+      return false;
+    }
+
+    // Check if they mention different objects by comparing key words
+    // Extract potential object words (nouns) - simple heuristic
+    const currentWords = current.split(/\s+/).filter(w => w.length > 3);
+    const newWords = newNarration.split(/\s+/).filter(w => w.length > 3);
+    
+    // If less than 30% word overlap, likely a new object
+    const commonWords = currentWords.filter(w => newWords.includes(w));
+    const overlapRatio = commonWords.length / Math.max(currentWords.length, newWords.length);
+    
+    return overlapRatio < 0.3;
+  }
+
+  /**
+   * Clean up old entries from lastSpoken map
+   */
+  private cleanupOldEntries(): void {
+    const now = Date.now();
+    for (const [text, time] of this.lastSpoken.entries()) {
+      if (now - time > this.dedupeWindowMs * 2) {
+        this.lastSpoken.delete(text);
+      }
+    }
   }
 
   /**
@@ -43,11 +137,21 @@ export class BatchedSpeechManager {
   addObservation(observation: Omit<Observation, 'id' | 'timestamp'>): void {
     console.log('Adding observation:', observation.priority, observation.narration);
     
-    // Only interrupt for truly critical items, and only if speech has been playing long enough
+    // First check if this was recently spoken - skip if so (unless critical)
+    if (observation.priority !== 'critical' && this.wasRecentlySpoken(observation.narration)) {
+      console.log('Skipping observation - was recently spoken:', observation.narration);
+      return;
+    }
+    
+    const isCurrentlySpeaking = this.isSpeaking || this.isProcessingRef || 
+      (this.currentAudioRef !== null && !this.currentAudioRef.paused && !this.currentAudioRef.ended);
+    const isNewObject = this.isNewObject(observation.narration);
+    
+    // Critical: interrupt immediately if speech has been playing long enough
     if (observation.priority === 'critical') {
       const speechDuration = Date.now() - this.speechStartTime;
       // Only interrupt if speech has been playing for at least minimum duration
-      if (this.isSpeaking && speechDuration >= this.minSpeechDuration) {
+      if (isCurrentlySpeaking && speechDuration >= this.minSpeechDuration) {
         console.log('Critical observation - interrupting after minimum duration');
         this.interrupt(observation.narration);
       } else {
@@ -62,16 +166,62 @@ export class BatchedSpeechManager {
         this.pendingObservations.unshift(fullObservation);
         console.log(`Added critical to batch. Total pending: ${this.pendingObservations.length}`);
       }
+    } else if (observation.priority === 'high') {
+      // High priority: if new object and currently speaking, queue it to finish current first
+      if (isCurrentlySpeaking && isNewObject) {
+        console.log('High priority new object - queuing to finish current narration first');
+        const fullObservation: Observation = {
+          ...observation,
+          id: `${Date.now()}-${Math.random()}`,
+          timestamp: Date.now(),
+        };
+        // Add to front of queue for high priority items
+        this.pendingObservations.unshift(fullObservation);
+        console.log(`Added high priority new object to queue. Total pending: ${this.pendingObservations.length}`);
+        return;
+      }
+      
+      // High priority: speak immediately if not currently speaking
+      if (!isCurrentlySpeaking) {
+        console.log('High priority observation - speaking immediately');
+        this.speakNow(observation.narration);
+        return;
+      }
+      
+      // If speaking same object, add to batch (will be processed soon)
+      console.log('High priority observation - queuing (currently speaking)');
+      const fullObservation: Observation = {
+        ...observation,
+        id: `${Date.now()}-${Math.random()}`,
+        timestamp: Date.now(),
+      };
+      // Add to front of queue for high priority items
+      this.pendingObservations.unshift(fullObservation);
+      console.log(`Added high priority to batch. Total pending: ${this.pendingObservations.length}`);
     } else {
-      // Check if we already have a very similar observation in the batch
+      // Medium/Low priority: if new object and currently speaking, queue it
+      if (isCurrentlySpeaking && isNewObject) {
+        console.log('New object detected - queuing to finish current narration first');
+        const fullObservation: Observation = {
+          ...observation,
+          id: `${Date.now()}-${Math.random()}`,
+          timestamp: Date.now(),
+        };
+        this.pendingObservations.push(fullObservation);
+        console.log(`Added new object to queue. Total pending: ${this.pendingObservations.length}`);
+        return;
+      }
+      
+      // Check for duplicates in pending queue
       const isDuplicate = this.pendingObservations.some(existing => {
-        const existingKey = existing.narration.toLowerCase().slice(0, 30);
-        const newKey = observation.narration.toLowerCase().slice(0, 30);
-        return existingKey === newKey;
+        return this.isSimilarNarration(
+          existing.narration.toLowerCase().trim(),
+          observation.narration.toLowerCase().trim()
+        );
       });
 
       if (isDuplicate) {
-        console.log('Skipping duplicate observation:', observation.narration);
+        console.log('Skipping duplicate observation in queue:', observation.narration);
         return;
       }
 
@@ -93,7 +243,10 @@ export class BatchedSpeechManager {
       clearInterval(this.batchTimer);
     }
 
+    console.log(`Starting batch timer with interval: ${this.batchInterval}ms`);
     this.batchTimer = setInterval(() => {
+      console.log(`Batch timer tick - Pending: ${this.pendingObservations.length}, Speaking: ${this.isSpeaking}, Processing: ${this.isProcessingRef}`);
+      
       if (this.pendingObservations.length === 0) {
         return;
       }
@@ -105,14 +258,16 @@ export class BatchedSpeechManager {
       }
 
       // Check if audio is actually playing
-      if (this.currentAudioRef && !this.currentAudioRef.paused) {
+      const audioPlaying = this.currentAudioRef !== null && !this.currentAudioRef.paused && !this.currentAudioRef.ended;
+      if (audioPlaying) {
         console.log('Skipping batch - audio is playing. Pending:', this.pendingObservations.length);
         return;
       }
 
       // Small delay to ensure previous speech has fully stopped
       // This prevents rapid-fire batch processing
-      if (Date.now() - this.speechStartTime < 500 && this.speechStartTime > 0) {
+      // Only check if speechStartTime is recent (within last 500ms)
+      if (this.speechStartTime > 0 && Date.now() - this.speechStartTime < 500) {
         console.log('Speech just ended, waiting before processing next batch');
         return;
       }
@@ -120,9 +275,22 @@ export class BatchedSpeechManager {
       const batch = [...this.pendingObservations];
       this.pendingObservations = [];
 
-      console.log(`Processing batch of ${batch.length} observations`);
+      console.log(`Processing batch of ${batch.length} observations:`, batch.map(o => o.narration));
       const summary = this.summarizeBatch(batch);
       console.log('Batch summary:', summary);
+      
+      // Skip if summary is empty (all observations were recently spoken)
+      if (!summary || summary.trim().length === 0) {
+        console.log('Skipping batch - all observations were recently spoken');
+        return;
+      }
+      
+      // Check if summary was recently spoken - skip if so
+      if (this.wasRecentlySpoken(summary)) {
+        console.log('Skipping batch summary - was recently spoken:', summary);
+        return;
+      }
+      
       this.speakNow(summary);
     }, this.batchInterval);
   }
@@ -131,13 +299,21 @@ export class BatchedSpeechManager {
    * Summarize a batch of observations into natural speech
    */
   summarizeBatch(observations: Observation[]): string {
-    // If only one observation, just use it
-    if (observations.length === 1) {
-      return observations[0].narration;
+    // Filter out observations that were recently spoken
+    const notRecentlySpoken = observations.filter(obs => !this.wasRecentlySpoken(obs.narration));
+    
+    // If all were recently spoken, return empty string (will be skipped)
+    if (notRecentlySpoken.length === 0) {
+      return '';
+    }
+    
+    // If only one observation remains, just use it
+    if (notRecentlySpoken.length === 1) {
+      return notRecentlySpoken[0].narration;
     }
 
     // Deduplicate similar observations
-    const unique = this.deduplicateObservations(observations);
+    const unique = this.deduplicateObservations(notRecentlySpoken);
 
     // Prioritize: hazards > navigation > orientation > social
     const priorityOrder: ObservationPriority[] = ['critical', 'high', 'medium', 'low'];
@@ -202,7 +378,7 @@ export class BatchedSpeechManager {
   /**
    * Speak text immediately using Murf AI API
    */
-  speakNow(text: string, cancelPrevious: boolean = true): void {
+  speakNow(text: string): void {
     if (!text || text.trim().length === 0) {
       return;
     }
@@ -242,6 +418,7 @@ export class BatchedSpeechManager {
     this.isProcessingRef = false;
     this.isSpeaking = false;
     this.speechStartTime = 0;
+    this.currentNarrationText = null; // Clear current narration
   }
 
   /**
@@ -339,10 +516,21 @@ export class BatchedSpeechManager {
       
       const audioUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(audioUrl);
+      
+      // Ensure audio is not muted and volume is set
+      audio.muted = false;
+      audio.volume = 1.0;
 
       this.currentAudioRef = audio;
       this.currentAudioUrlRef = audioUrl;
 
+      // Track current narration text
+      this.currentNarrationText = text;
+      
+      // Record that this was spoken
+      const key = text.toLowerCase().trim();
+      this.lastSpoken.set(key, Date.now());
+      
       console.log('Starting audio playback:', text);
       await new Promise<void>((resolve, reject) => {
         audio.onended = () => {
@@ -355,6 +543,7 @@ export class BatchedSpeechManager {
           this.isSpeaking = false;
           this.isProcessingRef = false;
           this.speechStartTime = 0;
+          this.currentNarrationText = null; // Clear current narration
           
           // Process pending batch after speech ends
           setTimeout(() => {
@@ -375,19 +564,30 @@ export class BatchedSpeechManager {
           this.isSpeaking = false;
           this.isProcessingRef = false;
           this.speechStartTime = 0;
+          this.currentNarrationText = null; // Clear current narration
           reject(new Error('Audio playback failed'));
         };
         audio.onplay = () => {
           console.log('Audio playback started:', text);
           this.speechStartTime = Date.now();
         };
-        audio.play().catch((err) => {
-          console.error('Audio play() failed:', err);
-          this.isSpeaking = false;
-          this.isProcessingRef = false;
-          this.speechStartTime = 0;
-          reject(err);
-        });
+        
+        // Play audio with error handling
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              console.log('Audio play() succeeded');
+            })
+            .catch((err) => {
+              console.error('Audio play() failed:', err);
+              this.isSpeaking = false;
+              this.isProcessingRef = false;
+              this.speechStartTime = 0;
+              this.currentNarrationText = null; // Clear current narration
+              reject(err);
+            });
+        }
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to generate speech';
@@ -403,7 +603,6 @@ export class BatchedSpeechManager {
   stop(): void {
     this.stopCurrentSpeech();
     this.pendingObservations = [];
-    this.criticalQueue = [];
   }
 
   /**
@@ -418,7 +617,7 @@ export class BatchedSpeechManager {
    */
   getIsSpeaking(): boolean {
     // Check flags and actual audio playback state
-    const audioPlaying = this.currentAudioRef && !this.currentAudioRef.paused && !this.currentAudioRef.ended;
+    const audioPlaying = this.currentAudioRef !== null && !this.currentAudioRef.paused && !this.currentAudioRef.ended ? true : false;
     return this.isSpeaking || this.isProcessingRef || audioPlaying;
   }
 
@@ -427,6 +626,7 @@ export class BatchedSpeechManager {
    */
   forceProcessBatch(): void {
     if (this.pendingObservations.length === 0) {
+      console.log('Force process called but no pending observations');
       return;
     }
 
@@ -435,12 +635,32 @@ export class BatchedSpeechManager {
       return;
     }
 
+    // Check if audio is actually playing
+    const audioPlaying = this.currentAudioRef !== null && !this.currentAudioRef.paused && !this.currentAudioRef.ended;
+    if (audioPlaying) {
+      console.log('Cannot force process - audio is playing');
+      return;
+    }
+
     const batch = [...this.pendingObservations];
     this.pendingObservations = [];
 
-    console.log(`Force processing batch of ${batch.length} observations`);
+    console.log(`Force processing batch of ${batch.length} observations:`, batch.map(o => o.narration));
     const summary = this.summarizeBatch(batch);
     console.log('Batch summary:', summary);
+    
+    // Skip if summary is empty (all observations were recently spoken)
+    if (!summary || summary.trim().length === 0) {
+      console.log('Skipping force batch - all observations were recently spoken');
+      return;
+    }
+    
+    // Check if summary was recently spoken - skip if so
+    if (this.wasRecentlySpoken(summary)) {
+      console.log('Skipping force batch summary - was recently spoken:', summary);
+      return;
+    }
+    
     this.speakNow(summary);
   }
 
@@ -454,7 +674,7 @@ export class BatchedSpeechManager {
       return;
     }
     // Don't cancel previous speech for test - just queue it
-    this.speakNow(text, false);
+    this.speakNow(text);
   }
 
   /**
