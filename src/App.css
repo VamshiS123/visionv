@@ -67,6 +67,23 @@
   object-fit: cover;
 }
 
+.camera-error {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.camera-error p {
+  margin: 0.5rem 0;
+  font-size: 0.875rem;
+}
+
+.camera-error-note {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
 .narration-controls {
   background-color: var(--surface);
   border-radius: 0.75rem;
