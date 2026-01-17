@@ -67,18 +67,18 @@
   object-fit: cover;
 }
 
-.camera-error {
+.camera-status {
   padding: 2rem;
   text-align: center;
   color: var(--text-secondary);
 }
 
-.camera-error p {
+.camera-status p {
   margin: 0.5rem 0;
   font-size: 0.875rem;
 }
 
-.camera-error-note {
+.camera-status-note {
   font-size: 0.75rem;
   color: var(--text-secondary);
   opacity: 0.7;
