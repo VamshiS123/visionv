@@ -16,7 +16,6 @@ export class VisionVoiceSpeechManager {
   private lastSpoken: Map<string, number>; // text -> timestamp
   private dedupeWindowMs: number;
   private speechRate: number;
-  private currentUtterance: SpeechSynthesisUtterance | null = null;
 
   constructor(config: {
     dedupeWindowMs?: number;
@@ -115,19 +114,15 @@ export class VisionVoiceSpeechManager {
     utterance.pitch = 1;
     utterance.volume = 1.0;
 
-    this.currentUtterance = utterance;
-
     utterance.onend = () => {
       console.log('Speech ended:', text);
       this.isSpeaking = false;
-      this.currentUtterance = null;
       this.processQueue();
     };
 
     utterance.onerror = (event) => {
       console.error('Speech error:', event.error);
       this.isSpeaking = false;
-      this.currentUtterance = null;
       this.processQueue();
     };
 
@@ -141,7 +136,6 @@ export class VisionVoiceSpeechManager {
     } catch (error) {
       console.error('Error speaking:', error);
       this.isSpeaking = false;
-      this.currentUtterance = null;
     }
   }
 
@@ -150,7 +144,6 @@ export class VisionVoiceSpeechManager {
     this.synth.cancel();
     this.queue = [];
     this.isSpeaking = false;
-    this.currentUtterance = null;
     this.speak(text);
   }
 
@@ -189,7 +182,6 @@ export class VisionVoiceSpeechManager {
     this.synth.cancel();
     this.queue = [];
     this.isSpeaking = false;
-    this.currentUtterance = null;
   }
 
   getIsSpeaking(): boolean {

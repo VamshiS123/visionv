@@ -152,7 +152,7 @@ export class NarrationOrchestrator {
   /**
    * Handle new scene scenario
    */
-  private handleNew(newText: string, lastText: string): RefinedDescription {
+  private handleNew(newText: string, _lastText: string): RefinedDescription {
     return {
       originalText: newText,
       refinedText: newText,

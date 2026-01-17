@@ -40,21 +40,6 @@ export function useOvershoot({
   const descriptionRef = useRef<string | null>(null);
   const currentPromptRef = useRef<string>(prompt);
 
-  const handleResult = useCallback((result: OvershootResult) => {
-    console.log('Overshoot result received:', result);
-    if (result.result && result.result.trim().length > 0) {
-      descriptionRef.current = result.result;
-      setDescription(result.result);
-      setError(null);
-      
-      // Call external onResult callback if provided
-      if (onResult) {
-        onResult(result);
-      }
-    } else {
-      console.warn('Overshoot returned empty result');
-    }
-  }, [onResult]);
 
   const start = useCallback(async () => {
     if (isActive || !apiKey) {

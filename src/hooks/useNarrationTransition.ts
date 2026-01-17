@@ -36,7 +36,7 @@ export function useNarrationTransition(
   }
 
   const processDescription = useCallback(
-    (text: string, priority: ObservationPriority = 'medium') => {
+    (text: string, _priority: ObservationPriority = 'medium') => {
       if (orchestratorRef.current) {
         const callback = (refined: RefinedDescription) => {
           if (onRefinedReadyRef.current) {

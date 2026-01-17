@@ -29,7 +29,6 @@ function App() {
   
   const {
     addObservation,
-    interrupt,
     stop: stopSpeech,
     isSpeaking,
     pendingCount,
@@ -47,7 +46,6 @@ function App() {
   const {
     start,
     stop,
-    updatePrompt,
     isActive,
     description,
     error,
