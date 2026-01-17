@@ -11,6 +11,15 @@ const API_URL = import.meta.env.VITE_OVERSHOOT_API_URL || 'https://cluster1.over
 const API_KEY = import.meta.env.VITE_OVERSHOOT_API_KEY || '';
 const MURF_API_KEY = import.meta.env.VITE_MURF_API_KEY || '';
 const MURF_VOICE_ID = import.meta.env.VITE_MURF_VOICE_ID || 'en-US-natalie';
+
+// Debug logging for environment variables (only show first few chars for security)
+console.log('Environment check:', {
+  hasOvershootApiKey: !!API_KEY,
+  hasMurfApiKey: !!MURF_API_KEY,
+  apiUrl: API_URL,
+  overshootKeyPreview: API_KEY ? `${API_KEY.substring(0, 10)}...` : 'MISSING',
+  murfKeyPreview: MURF_API_KEY ? `${MURF_API_KEY.substring(0, 10)}...` : 'MISSING',
+});
 const DEFAULT_PROMPT = 'Describe navigation info for a blind person. Be concise (under 12 words). Use clock positions and distances. If the environment hasn\'t changed significantly, respond with just "unchanged".';
 
 function App() {

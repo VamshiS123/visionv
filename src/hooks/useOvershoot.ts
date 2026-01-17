@@ -55,12 +55,18 @@ export function useOvershoot({
 
       console.log('Creating RealtimeVision with:', { 
         apiUrl, 
+        apiKey: apiKey ? `${apiKey.substring(0, 10)}...` : 'MISSING',
         prompt: currentPromptRef.current, 
         cameraFacing,
         processing,
         model,
         outputSchema,
       });
+      
+      // Validate API key is present
+      if (!apiKey || apiKey.trim() === '') {
+        throw new Error('API key is empty. Please set VITE_OVERSHOOT_API_KEY in your Vercel environment variables.');
+      }
       
       const resultCallback = (result: OvershootResult) => {
         try {
@@ -108,7 +114,16 @@ export function useOvershoot({
 
       visionRef.current = vision;
       console.log('Starting vision...');
-      await vision.start();
+      
+      // Add timeout to prevent hanging
+      const startPromise = vision.start();
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Vision start timed out after 10 seconds. Check API key and network connection.'));
+        }, 10000);
+      });
+      
+      await Promise.race([startPromise, timeoutPromise]);
       console.log('Vision started successfully');
       setIsActive(true);
       setIsLoading(false);
