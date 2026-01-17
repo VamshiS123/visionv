@@ -19,10 +19,10 @@ export class BatchedSpeechManager {
   private currentAudioUrlRef: string | null = null;
   private isProcessingRef: boolean = false;
   private speechStartTime: number = 0;
-  private minSpeechDuration: number = 2000; // Minimum 2 seconds before allowing interruption (reduced from 5)
+  private minSpeechDuration: number = 1000; // Minimum 1 second before allowing interruption for new objects
   private currentNarrationText: string | null = null; // Track what's currently being spoken
   private lastSpoken: Map<string, number>; // Track recently spoken narrations: text -> timestamp
-  private dedupeWindowMs: number = 12000; // Don't repeat same thing within 12 seconds
+  private dedupeWindowMs: number = 8000; // Don't repeat same thing within 8 seconds (reduced for faster updates)
 
   constructor(config: BatchedSpeechConfig = {}) {
     this.pendingObservations = [];
@@ -167,18 +167,26 @@ export class BatchedSpeechManager {
         console.log(`Added critical to batch. Total pending: ${this.pendingObservations.length}`);
       }
     } else if (observation.priority === 'high') {
-      // High priority: if new object and currently speaking, queue it to finish current first
+      // High priority new object: interrupt immediately if speech has been playing for a short time
       if (isCurrentlySpeaking && isNewObject) {
-        console.log('High priority new object - queuing to finish current narration first');
-        const fullObservation: Observation = {
-          ...observation,
-          id: `${Date.now()}-${Math.random()}`,
-          timestamp: Date.now(),
-        };
-        // Add to front of queue for high priority items
-        this.pendingObservations.unshift(fullObservation);
-        console.log(`Added high priority new object to queue. Total pending: ${this.pendingObservations.length}`);
-        return;
+        const speechDuration = Date.now() - this.speechStartTime;
+        // Allow interruption after just 0.5 seconds for new objects (faster response)
+        if (speechDuration >= 500) {
+          console.log('High priority new object - interrupting immediately');
+          this.interrupt(observation.narration, 500); // Use shorter minimum duration for new objects
+          return;
+        } else {
+          // If speech just started (< 0.5s), queue it to play next
+          console.log('High priority new object - queuing (speech just started)');
+          const fullObservation: Observation = {
+            ...observation,
+            id: `${Date.now()}-${Math.random()}`,
+            timestamp: Date.now(),
+          };
+          this.pendingObservations.unshift(fullObservation);
+          console.log(`Added high priority new object to queue. Total pending: ${this.pendingObservations.length}`);
+          return;
+        }
       }
       
       // High priority: speak immediately if not currently speaking
@@ -199,17 +207,26 @@ export class BatchedSpeechManager {
       this.pendingObservations.unshift(fullObservation);
       console.log(`Added high priority to batch. Total pending: ${this.pendingObservations.length}`);
     } else {
-      // Medium/Low priority: if new object and currently speaking, queue it
+      // Medium/Low priority: if new object and currently speaking, allow faster interruption
       if (isCurrentlySpeaking && isNewObject) {
-        console.log('New object detected - queuing to finish current narration first');
-        const fullObservation: Observation = {
-          ...observation,
-          id: `${Date.now()}-${Math.random()}`,
-          timestamp: Date.now(),
-        };
-        this.pendingObservations.push(fullObservation);
-        console.log(`Added new object to queue. Total pending: ${this.pendingObservations.length}`);
-        return;
+        const speechDuration = Date.now() - this.speechStartTime;
+        // Allow interruption after 1 second for new objects (faster than normal)
+        if (speechDuration >= 1000) {
+          console.log('New object detected - interrupting to speak immediately');
+          this.interrupt(observation.narration, 1000); // Use shorter minimum duration for new objects
+          return;
+        } else {
+          // If speech just started, queue it
+          console.log('New object detected - queuing (speech just started)');
+          const fullObservation: Observation = {
+            ...observation,
+            id: `${Date.now()}-${Math.random()}`,
+            timestamp: Date.now(),
+          };
+          this.pendingObservations.push(fullObservation);
+          console.log(`Added new object to queue. Total pending: ${this.pendingObservations.length}`);
+          return;
+        }
       }
       
       // Check for duplicates in pending queue
@@ -266,8 +283,8 @@ export class BatchedSpeechManager {
 
       // Small delay to ensure previous speech has fully stopped
       // This prevents rapid-fire batch processing
-      // Only check if speechStartTime is recent (within last 500ms)
-      if (this.speechStartTime > 0 && Date.now() - this.speechStartTime < 500) {
+      // Only check if speechStartTime is recent (within last 200ms)
+      if (this.speechStartTime > 0 && Date.now() - this.speechStartTime < 200) {
         console.log('Speech just ended, waiting before processing next batch');
         return;
       }
@@ -356,10 +373,12 @@ export class BatchedSpeechManager {
   /**
    * Interrupt current speech and speak immediately
    */
-  interrupt(text: string): void {
-    // Only interrupt if speech has been playing for minimum duration
+  interrupt(text: string, minDurationOverride?: number): void {
+    // Use override duration if provided (for new objects), otherwise use default
+    const minDuration = minDurationOverride ?? this.minSpeechDuration;
     const speechDuration = Date.now() - this.speechStartTime;
-    if (this.isSpeaking && speechDuration < this.minSpeechDuration) {
+    
+    if (this.isSpeaking && speechDuration < minDuration) {
       console.log(`Speech only played for ${speechDuration}ms, queuing interruption instead`);
       // Queue the interruption instead of canceling immediately
       this.addObservation({ narration: text, priority: 'critical' });
@@ -372,7 +391,7 @@ export class BatchedSpeechManager {
     // Small delay to ensure cleanup completes
     setTimeout(() => {
       this.processSpeech(text);
-    }, 100);
+    }, 50); // Reduced delay for faster response
   }
 
   /**
@@ -391,10 +410,10 @@ export class BatchedSpeechManager {
     // Always stop any ongoing speech first to prevent overlapping audio
     this.stopCurrentSpeech();
 
-    // Small delay to ensure audio cleanup completes
+    // Minimal delay to ensure audio cleanup completes
     setTimeout(() => {
       this.processSpeech(text);
-    }, 50);
+    }, 25); // Reduced delay for faster response
   }
 
   /**
@@ -545,12 +564,12 @@ export class BatchedSpeechManager {
           this.speechStartTime = 0;
           this.currentNarrationText = null; // Clear current narration
           
-          // Process pending batch after speech ends
+          // Process pending batch after speech ends (reduced delay for faster updates)
           setTimeout(() => {
             if (this.pendingObservations.length > 0 && !this.isSpeaking) {
               this.forceProcessBatch();
             }
-          }, 100);
+          }, 50); // Reduced from 100ms for faster response
           
           resolve();
         };

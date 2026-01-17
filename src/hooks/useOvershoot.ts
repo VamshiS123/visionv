@@ -55,18 +55,12 @@ export function useOvershoot({
 
       console.log('Creating RealtimeVision with:', { 
         apiUrl, 
-        apiKey: apiKey ? `${apiKey.substring(0, 10)}...` : 'MISSING',
         prompt: currentPromptRef.current, 
         cameraFacing,
         processing,
         model,
         outputSchema,
       });
-      
-      // Validate API key is present
-      if (!apiKey || apiKey.trim() === '') {
-        throw new Error('API key is empty. Please set VITE_OVERSHOOT_API_KEY in your Vercel environment variables.');
-      }
       
       const resultCallback = (result: OvershootResult) => {
         try {
@@ -112,54 +106,12 @@ export function useOvershoot({
       
       const vision = new RealtimeVision(visionConfig);
 
-      // Add error event listeners before starting
-      if (vision && typeof vision.on === 'function') {
-        vision.on('error', (error: any) => {
-          console.error('RealtimeVision error event:', error);
-          setError(`Vision error: ${error?.message || JSON.stringify(error)}`);
-          setIsLoading(false);
-          setIsActive(false);
-        });
-        
-        vision.on('close', () => {
-          console.log('RealtimeVision connection closed');
-          setIsActive(false);
-        });
-      }
-
       visionRef.current = vision;
       console.log('Starting vision...');
-      console.log('API URL:', apiUrl);
-      console.log('API Key present:', !!apiKey);
-      
-      // Add timeout to prevent hanging
-      const startPromise = vision.start().catch((err) => {
-        console.error('vision.start() rejected:', err);
-        throw err;
-      });
-      
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          reject(new Error('Vision start timed out after 15 seconds. This usually means:\n1. API key is invalid or not set in Vercel\n2. Network connection issue\n3. Overshoot API is unreachable\n\nCheck Vercel environment variables and browser console for details.'));
-        }, 15000);
-      });
-      
-      try {
-        await Promise.race([startPromise, timeoutPromise]);
-        console.log('Vision started successfully');
-        setIsActive(true);
-        setIsLoading(false);
-      } catch (err) {
-        // If it's our timeout error, provide more context
-        if (err instanceof Error && err.message.includes('timed out')) {
-          console.error('Vision start timeout. Possible causes:');
-          console.error('- API key not set in Vercel environment variables');
-          console.error('- Invalid API key');
-          console.error('- Network/CORS issue');
-          console.error('- Overshoot API endpoint unreachable');
-        }
-        throw err;
-      }
+      await vision.start();
+      console.log('Vision started successfully');
+      setIsActive(true);
+      setIsLoading(false);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to start camera';
       console.error('Error starting vision:', err);
