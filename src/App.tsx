@@ -134,30 +134,12 @@ function App() {
   }, [isActive, stopSpeech]);
 
   const handleStart = async () => {
-    // Check if running on HTTPS (required for camera access)
-    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-      alert('Camera access requires HTTPS. Please access this app via HTTPS.');
-      return;
-    }
-
-    // Check if mediaDevices API is available
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert('Camera access is not supported in this browser. Please use a modern browser like Chrome, Safari, or Firefox.');
-      return;
-    }
-
     if (!API_KEY) {
-      alert('Overshoot API key is not configured. Please set VITE_OVERSHOOT_API_KEY in your Vercel environment variables.');
+      alert('Please set VITE_OVERSHOOT_API_KEY in your .env file');
       return;
     }
-    
-    try {
-      await start();
-      setShowCamera(true);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to start camera';
-      alert(`Failed to start: ${errorMsg}. Please check your browser console for details.`);
-    }
+    await start();
+    setShowCamera(true);
   };
 
   const handleStop = async () => {
@@ -210,13 +192,7 @@ function App() {
 
         {!MURF_API_KEY && (
           <div className="error-message" style={{ marginBottom: '1rem' }}>
-            <strong>Warning:</strong> Murf AI API key is not configured. Please set VITE_MURF_API_KEY in your Vercel environment variables for voice narration.
-          </div>
-        )}
-
-        {!API_KEY && (
-          <div className="error-message" style={{ marginBottom: '1rem' }}>
-            <strong>Error:</strong> Overshoot API key is not configured. Please set VITE_OVERSHOOT_API_KEY in your Vercel environment variables.
+            <strong>Warning:</strong> Murf AI API key is not configured. Please set VITE_MURF_API_KEY in your .env file for voice narration.
           </div>
         )}
 

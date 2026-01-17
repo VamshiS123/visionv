@@ -113,18 +113,7 @@ export function useOvershoot({
       setIsActive(true);
       setIsLoading(false);
     } catch (err) {
-      let errorMessage = 'Failed to start camera';
-      if (err instanceof Error) {
-        errorMessage = err.message;
-        // Provide more helpful error messages
-        if (err.message.includes('getUserMedia')) {
-          errorMessage = 'Camera access denied. Please allow camera permissions and try again.';
-        } else if (err.message.includes('network') || err.message.includes('fetch')) {
-          errorMessage = 'Network error. Please check your internet connection.';
-        } else if (err.message.includes('API') || err.message.includes('key')) {
-          errorMessage = 'API configuration error. Please check your API keys in Vercel environment variables.';
-        }
-      }
+      const errorMessage = err instanceof Error ? err.message : 'Failed to start camera';
       console.error('Error starting vision:', err);
       setError(errorMessage);
       setIsLoading(false);
