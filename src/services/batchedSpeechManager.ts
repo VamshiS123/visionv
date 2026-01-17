@@ -19,10 +19,10 @@ export class BatchedSpeechManager {
   private currentAudioUrlRef: string | null = null;
   private isProcessingRef: boolean = false;
   private speechStartTime: number = 0;
-  private minSpeechDuration: number = 300; // Minimum 0.3 seconds before allowing interruption
+  private minSpeechDuration: number = 500; // Minimum 0.5 seconds before allowing interruption for new objects
   private currentNarrationText: string | null = null; // Track what's currently being spoken
   private lastSpoken: Map<string, number>; // Track recently spoken narrations: text -> timestamp
-  private dedupeWindowMs: number = 8000; // Don't repeat same thing within 8 seconds (reduced for faster updates)
+  private dedupeWindowMs: number = 6000; // Don't repeat same thing within 6 seconds (reduced for faster updates)
 
   constructor(config: BatchedSpeechConfig = {}) {
     this.pendingObservations = [];
@@ -170,10 +170,10 @@ export class BatchedSpeechManager {
       // High priority new object: interrupt immediately if speech has been playing for a short time
       if (isCurrentlySpeaking && isNewObject) {
         const speechDuration = Date.now() - this.speechStartTime;
-        // Allow interruption after just 0.2 seconds for new objects (faster response)
-        if (speechDuration >= 200) {
+        // Allow interruption after just 0.3 seconds for new objects (faster response)
+        if (speechDuration >= 300) {
           console.log('High priority new object - interrupting immediately');
-          this.interrupt(observation.narration, 200); // Use shorter minimum duration for new objects
+          this.interrupt(observation.narration, 300); // Use shorter minimum duration for new objects
           return;
         } else {
           // If speech just started (< 0.5s), queue it to play next
@@ -210,10 +210,10 @@ export class BatchedSpeechManager {
       // Medium/Low priority: if new object and currently speaking, allow faster interruption
       if (isCurrentlySpeaking && isNewObject) {
         const speechDuration = Date.now() - this.speechStartTime;
-        // Allow interruption after 0.3 seconds for new objects (faster than normal)
-        if (speechDuration >= 300) {
+        // Allow interruption after 0.5 seconds for new objects (faster than normal)
+        if (speechDuration >= 500) {
           console.log('New object detected - interrupting to speak immediately');
-          this.interrupt(observation.narration, 300); // Use shorter minimum duration for new objects
+          this.interrupt(observation.narration, 500); // Use shorter minimum duration for new objects
           return;
         } else {
           // If speech just started, queue it
@@ -388,10 +388,10 @@ export class BatchedSpeechManager {
     // Stop all audio first
     this.stopCurrentSpeech();
     
-    // Minimal delay to ensure cleanup completes
+    // Small delay to ensure cleanup completes
     setTimeout(() => {
       this.processSpeech(text);
-    }, 10); // Minimal delay for fastest response
+    }, 25); // Reduced delay for faster response
   }
 
   /**
@@ -413,7 +413,7 @@ export class BatchedSpeechManager {
     // Minimal delay to ensure audio cleanup completes
     setTimeout(() => {
       this.processSpeech(text);
-    }, 10); // Minimal delay for fastest response
+    }, 25); // Reduced delay for faster response
   }
 
   /**
@@ -564,12 +564,12 @@ export class BatchedSpeechManager {
           this.speechStartTime = 0;
           this.currentNarrationText = null; // Clear current narration
           
-          // Process pending batch after speech ends (minimal delay for fastest updates)
+          // Process pending batch after speech ends (reduced delay for faster updates)
           setTimeout(() => {
             if (this.pendingObservations.length > 0 && !this.isSpeaking) {
               this.forceProcessBatch();
             }
-          }, 20); // Minimal delay for fastest response
+          }, 25); // Reduced for faster response
           
           resolve();
         };

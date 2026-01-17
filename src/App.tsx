@@ -34,7 +34,7 @@ function App() {
     pendingCount,
     testSpeech,
   } = useBatchedSpeech({
-    batchInterval: 200, // 0.2 seconds - reduced for faster speech updates
+    batchInterval: 300, // 0.3 seconds - reduced for faster speech updates
     apiKey: MURF_API_KEY,
     voiceId: MURF_VOICE_ID,
     format: 'MP3',
@@ -56,8 +56,8 @@ function App() {
     prompt: DEFAULT_PROMPT,
     cameraFacing: 'environment',
     processing: {
-      clip_length_seconds: 1.0,  // Reduced from 1.5 for faster processing (0.5 was too low for API)
-      delay_seconds: 0.3,         // Reduced for faster updates - check API minimum
+      clip_length_seconds: 0.5,  // Reduced for faster processing
+      delay_seconds: 0.3,         // Reduced for faster updates
       fps: 30,
       sampling_ratio: 0.1,
     },
@@ -77,10 +77,8 @@ function App() {
       const currentVoiceEnabled = voiceEnabledRef.current;
       const currentIsActive = isActiveRef.current;
       console.log('Overshoot onResult called:', { voiceEnabled: currentVoiceEnabled, isActive: currentIsActive, result });
-      
-      // Only skip voice narration if voice is disabled, but always allow description to update
       if (!currentVoiceEnabled || !currentIsActive) {
-        console.log('Skipping voice observation - voice not enabled or not active (description will still update)');
+        console.log('Skipping observation - voice not enabled or not active');
         return;
       }
 
@@ -190,7 +188,7 @@ function App() {
           </div>
         )}
 
-        {showCamera && isActive && <CameraView isActive={isActive} />}
+        {showCamera && <CameraView isActive={isActive} />}
 
         {!MURF_API_KEY && (
           <div className="error-message" style={{ marginBottom: '1rem' }}>

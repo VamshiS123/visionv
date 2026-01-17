@@ -34,7 +34,7 @@ export function DescriptionDisplay({ description, isActive, showText = true }: D
         {description ? (
           <p className="description-text">{description}</p>
         ) : isActive ? (
-          <p className="description-placeholder">Waiting for analysis... (Check console for results)</p>
+          <p className="description-placeholder">Analyzing environment...</p>
         ) : (
           <p className="description-placeholder">Press Start to begin describing the environment</p>
         )}
